@@ -1,4 +1,4 @@
-import { App, MarkdownView, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, MarkdownView, Notice, Modal, Plugin, Editor, PluginSettingTab, Setting, TextComponent} from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -7,7 +7,7 @@ interface MyPluginSettings {
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	linkFormat: "${filePath}/${fileBasename}#${headingText}|${headingText}"
+	linkFormat: "${fileDir}/${fileBasename}#${headingText}|${headingText}"
 };
 
 
@@ -42,11 +42,11 @@ export default class MyPlugin extends Plugin {
 		}
 
 		// Get the current file's directory path and basename (without extension)
-		const filePath = file.path.substring(0, file.path.lastIndexOf('/'));
+		const fileDir = file.path.substring(0, file.path.lastIndexOf('/'));
 		const fileBasename = file.basename
 		// Construct the Wiki Link (excluding .md extension)
 		const targetLink = `[[${this.settings.linkFormat
-			.replaceAll('${filePath}', filePath)
+			.replaceAll('${fileDir}', fileDir)
 			.replaceAll('${fileBasename}', fileBasename)
 			.replaceAll('${headingText}', headingText)}]]`;
 
@@ -56,6 +56,14 @@ export default class MyPlugin extends Plugin {
 		}).catch(err => {
 			console.error('Failed to copy text: ', err);
 		});
+	}
+	matchLink(editor: Editor, view: MarkdownView) {
+		const selectedText = editor.getSelection().toLowerCase();
+		if (!selectedText) {
+			new Notice('No text selected!');
+			return;
+		}
+		new SearchModal(this.app, selectedText, this.settings.linkFormat, editor).open()
 	}
 	async onload() {
 		await this.loadSettings();
@@ -79,7 +87,6 @@ export default class MyPlugin extends Plugin {
 				}
 			}
 		});
-
 		this.registerEvent(
 			this.app.workspace.on("editor-menu", (menu, editor, view) => {
 				if (view instanceof MarkdownView) {
@@ -98,7 +105,26 @@ export default class MyPlugin extends Plugin {
 
 			})
 		);
+		this.addCommand({
+			id: "match-link",
+			name: "Match Link",
+			editorCallback: this.matchLink
+		})
 
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu, editor, view) => {
+				if (view instanceof MarkdownView) {
+					menu.addItem((item) => {
+						item
+							.setTitle("Match link")
+							.setIcon("chevrons-right")
+							.onClick(async () => {
+								this.matchLink(editor,view)
+							});
+					})
+				}
+			})
+		)
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new MySettingTab(this.app, this));
 
@@ -119,6 +145,96 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
+class SearchModal extends Modal {
+	query: string;
+	format: string;
+	editor: Editor;
+	constructor(app: App, query: string, format: string, editor: Editor) {
+		super(app);
+		this.query = query;
+		this.format = format;
+		this.editor = editor;
+	}
+	async onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        // 创建搜索框
+        const searchInput = new TextComponent(contentEl);
+        searchInput.setValue(this.query);
+
+        // 创建结果容器
+        const resultsContainer = contentEl.createDiv({ cls: 'search-results' });
+
+        // 搜索输入变化时更新搜索结果
+        searchInput.onChange(value => {
+            this.query = value;
+            this.searchHeadings(resultsContainer);
+        });
+
+        // 初次显示搜索结果
+        this.searchHeadings(resultsContainer);
+    }
+	async searchHeadings(container?: HTMLElement) {
+		if (!container)
+			return;
+		container.empty();
+		const markdownFiles = this.app.vault.getMarkdownFiles();
+		for (const file of markdownFiles) {
+			const content = await this.app.vault.read(file);
+			const headings = content.match(/^#+\s.*$/gm) || [];
+			for (const heading of headings) {
+				if (heading.toLowerCase().includes(this.query)) {
+					const headingText = heading.replace(/^#+\s*/, '');
+                    const resultEl = container.createDiv({ text: `${file.path} - ${headingText}`, cls: 'result-item' });
+                    resultEl.setAttribute('data-path', file.path);
+                    resultEl.setAttribute('data-heading', headingText);
+					
+					// CSS
+					resultEl.style.padding = '8px';
+					resultEl.style.borderRadius = '4px';
+					resultEl.style.margin = '4px 0';
+					resultEl.style.transition = 'background-color 0.2s ease';
+	
+					resultEl.onmouseover = () => {
+						resultEl.style.backgroundColor = '#e3e3e3';
+						resultEl.style.cursor = 'pointer';
+					};
+					resultEl.onmouseout = () => {
+						resultEl.style.backgroundColor = '';
+					};
+                    resultEl.onClickEvent(() => {
+                        let filePath = resultEl.getAttribute('data-path');
+                        const selectedHeading = resultEl.getAttribute('data-heading');
+						if (!filePath || !selectedHeading) {
+							new Notice('Failed to retrieve file path or heading.');
+							return;
+						}
+						filePath=filePath.replace(/\.md$/, '');
+                        const fileBasename = filePath.substring(filePath.lastIndexOf('/') + 1);
+						const fileDir=filePath.substring(0, file.path.lastIndexOf('/'));
+						new Notice(filePath)
+                        new Notice(fileBasename)
+                        const link = `[[${this.format
+                            .replaceAll('${fileDir}', fileDir)
+                            .replaceAll('${fileBasename}', fileBasename)
+                            .replaceAll('${headingText}', selectedHeading)}]]`;
+
+                        // 用链接替换选中文本
+                        this.editor.replaceSelection(link);
+                        new Notice('Text replaced with link.');
+                        this.close();
+                    });
+				}
+			}
+		}
+	}
+	
+	onClose(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
 class MySettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
@@ -134,10 +250,10 @@ class MySettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('link format')
-			.setDesc('${filePath},${fileBasename},${headingText} are available')
+			.setDesc('${fileDir},${fileBasename},${headingText} are available')
 			.addText(text => {
 				text.setPlaceholder('Enter your format')
-					.setValue(this.plugin.settings.linkFormat || "${filePath}/${fileBasename}#${headingText}|${headingText}")
+					.setValue(this.plugin.settings.linkFormat || "${fileDir}/${fileBasename}#${headingText}|${headingText}")
 					.onChange(async (value) => {
 						this.plugin.settings.linkFormat = value;
 						await this.plugin.saveSettings();
