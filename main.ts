@@ -213,8 +213,8 @@ class SearchModal extends Modal {
 						filePath=filePath.replace(/\.md$/, '');
                         const fileBasename = filePath.substring(filePath.lastIndexOf('/') + 1);
 						const fileDir=filePath.substring(0, file.path.lastIndexOf('/'));
-						new Notice(filePath)
-                        new Notice(fileBasename)
+						// new Notice(filePath)
+                        // new Notice(fileBasename)
                         const link = `[[${this.format
                             .replaceAll('${fileDir}', fileDir)
                             .replaceAll('${fileBasename}', fileBasename)

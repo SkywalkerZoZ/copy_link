@@ -1,11 +1,11 @@
 {
 	"id": "link-tools",
-	"name": "link-tools",
+	"name": "link tools",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "link tools",
+	"description": "copy and match links",
 	"author": "skyw",
-	"authorUrl": "https://github.com/SkywalkerZoZ/obsidian-link-tools",
-	"fundingUrl": "https://github.com/SkywalkerZoZ/obsidian-link-tools",
+	"authorUrl": "https://github.com/skyw8",
+	"fundingUrl": "https://github.com/skyw8?tab=repositories",
 	"isDesktopOnly": false
 }
